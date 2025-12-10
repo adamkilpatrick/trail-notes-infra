@@ -46,9 +46,25 @@ namespace TrailNotesInfra
             });
             var websiteBucket = new Bucket(this, "website-bucket", new BucketProps
             {
-                WebsiteIndexDocument = "index.html",
-                BlockPublicAccess = BlockPublicAccess.BLOCK_ACLS_ONLY,
-                PublicReadAccess = true
+                BlockPublicAccess = BlockPublicAccess.BLOCK_ALL
+            });
+            
+            var resolveHtmlFunction = new Function(this, "resolve-html-function", new FunctionProps
+            {
+                Code = FunctionCode.FromInline("""
+                    function handler(event) {
+                        var request = event.request;
+                        var uri = request.uri;
+
+                        if (uri.endsWith('/')) {
+                            request.uri += 'index.html';
+                        } else if(!uri.includes('.')) {
+                            request.uri += '.html';
+                        }
+                        return request;
+                    }
+                
+                """)
             });
             var distribution = new Distribution(this, "website-distribution", new DistributionProps
             {
@@ -56,11 +72,28 @@ namespace TrailNotesInfra
                 DomainNames = DOMAIN_ALIASES,
                 DefaultBehavior = new BehaviorOptions
                 {
-                    Origin = new S3StaticWebsiteOrigin(websiteBucket)
-                }
+                    Origin = S3BucketOrigin.WithOriginAccessControl(websiteBucket),
+                    ViewerProtocolPolicy = ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                    FunctionAssociations = new FunctionAssociation[]
+                    {
+                        new FunctionAssociation
+                        {
+                            Function = resolveHtmlFunction,
+                            EventType = FunctionEventType.VIEWER_REQUEST
+                        }
+                    }
+                },
+            });
+
+
+            var bucketUser = new User(this, "bucket-user");
+            var accessKey = new CfnAccessKey(this, "bucket-user-key", new CfnAccessKeyProps
+            {
+                UserName = bucketUser.UserName
             });
 
             websiteBucket.GrantReadWrite(githubBucketRole);
+            websiteBucket.GrantReadWrite(bucketUser);
             distribution.GrantCreateInvalidation(githubBucketRole);
 
             var bucketOutput = new CfnOutput(this, "website-bucket-name", new CfnOutputProps
@@ -70,6 +103,14 @@ namespace TrailNotesInfra
             var distributionOutput = new CfnOutput(this, "website-distribution-id", new CfnOutputProps
             {
                 Value = distribution.DistributionId
+            });
+            var accessKeyIdOutput = new CfnOutput(this, "bucket-user-access-key-id", new CfnOutputProps
+            {
+                Value = accessKey.Ref
+            });
+            var secretAccessKeyOutput = new CfnOutput(this, "bucket-user-secret-access-key", new CfnOutputProps
+            {
+                Value = accessKey.AttrSecretAccessKey
             });
         }
     }
