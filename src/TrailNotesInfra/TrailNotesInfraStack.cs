@@ -52,16 +52,41 @@ namespace TrailNotesInfra
             var resolveHtmlFunction = new Function(this, "resolve-html-function", new FunctionProps
             {
                 Code = FunctionCode.FromInline("""
+
                     function handler(event) {
                         var request = event.request;
                         var uri = request.uri;
 
                         if (uri.endsWith('/')) {
                             request.uri += 'index.html';
+                        // Quartz does some weird thing where if you publish an explicit html file it strips the html suffix
+                        // it is useful to have some raw html files for iframes and whatnot (because obsidian will block things like js includes) 
+                        // so working around with this for the time being
+                        } else if(uri.includes('htmlTemplates')) {
+                            return request;
+                        // Markdown files get published as html files, but all of the linking assumes a routing layer that will imply an html suffix
                         } else if(!uri.includes('.')) {
                             request.uri += '.html';
                         }
                         return request;
+                    }
+                
+                """)
+            });
+            var responseFunction = new Function(this, "response-function", new FunctionProps
+            {
+                Code = FunctionCode.FromInline("""
+
+                    function handler(event) {
+                        var request = event.request;
+                        var response = event.response;
+                        var uri = request.uri;
+                        var headers = response.headers;
+
+                        if(uri.includes('htmlTemplates')) {
+                            headers['content-type'] = { value: 'text/html; charset=UTF-8' };
+                        }
+                        return response;
                     }
                 
                 """)
@@ -80,6 +105,11 @@ namespace TrailNotesInfra
                         {
                             Function = resolveHtmlFunction,
                             EventType = FunctionEventType.VIEWER_REQUEST
+                        },
+                        new FunctionAssociation
+                        {
+                            Function = responseFunction,
+                            EventType = FunctionEventType.VIEWER_RESPONSE
                         }
                     }
                 },
