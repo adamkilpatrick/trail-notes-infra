@@ -4,7 +4,10 @@ using Amazon.CDK;
 using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.CloudFront;
 using Amazon.CDK.AWS.CloudFront.Origins;
+using Amazon.CDK.AWS.Events;
+using Amazon.CDK.AWS.Events.Targets;
 using Amazon.CDK.AWS.IAM;
+using Amazon.CDK.AWS.Lambda;
 using Amazon.CDK.AWS.S3;
 using Constructs;
 
@@ -49,7 +52,7 @@ namespace TrailNotesInfra
                 BlockPublicAccess = BlockPublicAccess.BLOCK_ALL
             });
             
-            var resolveHtmlFunction = new Function(this, "resolve-html-function", new FunctionProps
+            var resolveHtmlFunction = new Amazon.CDK.AWS.CloudFront.Function(this, "resolve-html-function", new Amazon.CDK.AWS.CloudFront.FunctionProps
             {
                 Code = FunctionCode.FromInline("""
 
@@ -73,7 +76,7 @@ namespace TrailNotesInfra
                 
                 """)
             });
-            var responseFunction = new Function(this, "response-function", new FunctionProps
+            var responseFunction = new Amazon.CDK.AWS.CloudFront.Function(this, "response-function", new Amazon.CDK.AWS.CloudFront.FunctionProps
             {
                 Code = FunctionCode.FromInline("""
 
@@ -125,6 +128,32 @@ namespace TrailNotesInfra
             websiteBucket.GrantReadWrite(githubBucketRole);
             websiteBucket.GrantReadWrite(bucketUser);
             distribution.GrantCreateInvalidation(githubBucketRole);
+
+
+            var statusLambda = new Amazon.CDK.AWS.Lambda.Function(this, "status-checker-lambda", new Amazon.CDK.AWS.Lambda.FunctionProps
+            {
+                Runtime = Runtime.PYTHON_3_12,
+                Handler = "statusChecker.lambda_handler",
+                Code = Code.FromAsset("src/TrailNotesInfra/scripts"),
+                Environment = new Dictionary<string, string>
+                {
+                    { "S3_BUCKET", websiteBucket.BucketName }
+                },
+                Timeout = Duration.Minutes(5)
+            });
+
+            websiteBucket.GrantWrite(statusLambda);
+
+            var dailyRule = new Rule(this, "daily-status-check", new RuleProps
+            {
+                Schedule = Schedule.Cron(new CronOptions
+                {
+                    Hour = "12",
+                    Minute = "0"
+                })
+            });
+
+            dailyRule.AddTarget(new LambdaFunction(statusLambda));
 
             var bucketOutput = new CfnOutput(this, "website-bucket-name", new CfnOutputProps
             {
