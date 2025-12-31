@@ -8,7 +8,10 @@ using Amazon.CDK.AWS.Events;
 using Amazon.CDK.AWS.Events.Targets;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Lambda;
+using Amazon.CDK.AWS.Lambda.EventSources;
 using Amazon.CDK.AWS.S3;
+using Amazon.CDK.AWS.S3.Notifications;
+using Amazon.CDK.AWS.SQS;
 using Constructs;
 
 namespace TrailNotesInfra
@@ -148,12 +151,50 @@ namespace TrailNotesInfra
             {
                 Schedule = Schedule.Cron(new CronOptions
                 {
-                    Hour = "12",
+                    Hour = "4",
                     Minute = "0"
                 })
             });
 
             dailyRule.AddTarget(new LambdaFunction(statusLambda));
+
+            var imageQueue = new Queue(this, "image-processing-queue", new QueueProps
+            {
+                VisibilityTimeout = Duration.Minutes(10)
+            });
+
+            var imageLocationLambda = new DockerImageFunction(this, "image-location-extractor", new DockerImageFunctionProps
+            {
+                Code = DockerImageCode.FromImageAsset("src/ImageLocationExtractor"),
+                Timeout = Duration.Minutes(5),
+                ReservedConcurrentExecutions = 1,
+                Environment = new Dictionary<string, string>
+                {
+                    { "JSON_BUCKET", websiteBucket.BucketName },
+                    { "JSON_KEY", "image_locations.json"}
+                }
+            });
+
+            imageLocationLambda.AddEventSource(new SqsEventSource(imageQueue, new SqsEventSourceProps
+            {
+                BatchSize = 1
+            }));
+
+            websiteBucket.GrantRead(imageLocationLambda);
+            websiteBucket.GrantWrite(imageLocationLambda);
+
+            websiteBucket.AddEventNotification(EventType.OBJECT_CREATED, new SqsDestination(imageQueue), new NotificationKeyFilter
+            {
+                Suffix = ".jpg"
+            });
+            websiteBucket.AddEventNotification(EventType.OBJECT_CREATED, new SqsDestination(imageQueue), new NotificationKeyFilter
+            {
+                Suffix = ".jpeg"
+            });
+            websiteBucket.AddEventNotification(EventType.OBJECT_CREATED, new SqsDestination(imageQueue), new NotificationKeyFilter
+            {
+                Suffix = ".png"
+            });
 
             var bucketOutput = new CfnOutput(this, "website-bucket-name", new CfnOutputProps
             {
