@@ -1,3 +1,4 @@
+import time
 import urllib.request, json, os, boto3
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -24,6 +25,8 @@ def get_weather(lat, long):
         }
 
 def lambda_handler(event, context):
+    cf_client = boto3.client('cloudfront')
+    s3 = boto3.client('s3')
     # TODO cram these into env variables
     date = get_last_check_in_date('https://api.github.com/repos/adamkilpatrick/trail-notes/commits')
     loc = get_last_check_in_loc('https://trail.snakeha.us/paths/test.json')
@@ -35,11 +38,11 @@ def lambda_handler(event, context):
         'timestamp': datetime.utcnow().isoformat()
     }
     
+    cf_distribution_id = os.environ['CLOUDFRONT_DISTRIBUTION_ID']
     s3_bucket = os.environ['S3_BUCKET']
     s3_key = f"status/{datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')}.json"
     s3_key_latest = f"status/latest.json"
     
-    s3 = boto3.client('s3')
     s3.put_object(
         Bucket=s3_bucket,
         Key=s3_key,
@@ -51,6 +54,17 @@ def lambda_handler(event, context):
         Key=s3_key_latest,
         Body=json.dumps(payload),
         ContentType='application/json'
+    )
+
+    cf_client.create_invalidation(
+        DistributionId=cf_distribution_id,
+        InvalidationBatch={
+            'Paths': {
+                'Quantity': 1,
+                'Items': ['/*']
+            },
+            'CallerReference': str(time.time()) 
+        }
     )
     
     return {

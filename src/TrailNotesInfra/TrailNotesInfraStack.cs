@@ -140,12 +140,14 @@ namespace TrailNotesInfra
                 Code = Code.FromAsset("src/TrailNotesInfra/scripts"),
                 Environment = new Dictionary<string, string>
                 {
-                    { "S3_BUCKET", websiteBucket.BucketName }
+                    { "S3_BUCKET", websiteBucket.BucketName },
+                    { "CLOUDFRONT_DISTRIBUTION_ID", distribution.DistributionId }
                 },
                 Timeout = Duration.Minutes(5)
             });
 
             websiteBucket.GrantWrite(statusLambda);
+            distribution.GrantCreateInvalidation(statusLambda);
 
             var dailyRule = new Rule(this, "daily-status-check", new RuleProps
             {
