@@ -10,8 +10,14 @@ namespace TrailNotesInfra
         public static void Main(string[] args)
         {
             var app = new App();
-            new TrailNotesInfraStack(app, "TrailNotesInfraStack", new StackProps
+            var mainInfraStack = new TrailNotesInfraStack(app, "TrailNotesInfraStack", new StackProps
             {
+            });
+
+            var deadManSwitchStack = new DeadManSwitchInfraStack(app, "DeadMansSwitchStack", new DeadManSwitchInfraStackProps
+            {
+                WebsiteBucket = mainInfraStack.WebsiteBucket,
+                WebsiteDistribution = mainInfraStack.WebsiteDistribution
             });
             app.Synth();
         }

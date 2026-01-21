@@ -22,6 +22,9 @@ namespace TrailNotesInfra
         private static readonly string REPO = "adamkilpatrick/trail-notes";
         private static readonly string[] DOMAIN_ALIASES = { DOMAIN };
 
+        public Bucket WebsiteBucket { get; private set; }
+        public Distribution WebsiteDistribution {get; private set; }
+
         internal TrailNotesInfraStack(Construct scope, string id, IStackProps props = null) : base(scope, id, props)
         {
             var githubBucketRole = new Role(this, "github-bucket-role", new RoleProps
@@ -197,6 +200,9 @@ namespace TrailNotesInfra
             {
                 Suffix = ".png"
             });
+
+            this.WebsiteBucket = websiteBucket;
+            this.WebsiteDistribution = distribution;
 
             var bucketOutput = new CfnOutput(this, "website-bucket-name", new CfnOutputProps
             {

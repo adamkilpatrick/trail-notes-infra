@@ -61,7 +61,7 @@ def lambda_handler(event, context):
         InvalidationBatch={
             'Paths': {
                 'Quantity': 1,
-                'Items': ['/*']
+                'Items': ['/status/*']
             },
             'CallerReference': str(time.time()) 
         }
