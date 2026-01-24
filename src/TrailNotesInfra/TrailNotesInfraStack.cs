@@ -163,6 +163,51 @@ namespace TrailNotesInfra
 
             dailyRule.AddTarget(new LambdaFunction(statusLambda));
 
+            var trackpointScraper = new DockerImageFunction(this, "trackpoint-scraper-lambda", new DockerImageFunctionProps
+            {
+                Code = DockerImageCode.FromImageAsset("src/TrackpointScraper"),
+                Timeout = Duration.Minutes(5),
+                ReservedConcurrentExecutions = 1,
+                Environment = new Dictionary<string, string>
+                {
+                    { "TARGET_URL", "https://live.garmin.com/adamkilpatrick" },
+                    { "S3_BUCKET", websiteBucket.BucketName },
+                    { "PATH_NAME", "lsht_garmin" },
+                    { "ROOT", "lsht"}
+                }
+            });
+            websiteBucket.GrantWrite(trackpointScraper);
+
+            var scraperRule = new Rule(this, "scraper-rule", new RuleProps
+            {
+                Schedule = Schedule.Cron(new CronOptions
+                {
+                    Hour = "4",
+                    Minute = "0"
+                })
+            });
+            scraperRule.AddTarget(new LambdaFunction(trackpointScraper));
+
+            var pathMergeLambda = new Amazon.CDK.AWS.Lambda.Function(this, "path-merger-lambda", new Amazon.CDK.AWS.Lambda.FunctionProps
+            {
+                Runtime = Runtime.PYTHON_3_12,
+                Handler = "pathMerger.lambda_handler",
+                Code = Code.FromAsset("src/TrailNotesInfra/scripts"),
+                Environment = new Dictionary<string, string>
+                {
+                    { "PATHS", "lsht,lsht_garmin" },
+                    { "OUTPUT_KEY", "lsht_merged.json" },
+                    { "CLOUDFRONT_DISTRIBUTION_ID", distribution.DistributionId }
+                },
+                Timeout = Duration.Minutes(5)
+            });
+            websiteBucket.GrantReadWrite(pathMergeLambda);
+            distribution.GrantCreateInvalidation(pathMergeLambda);
+            websiteBucket.AddEventNotification(EventType.OBJECT_CREATED, new LambdaDestination(pathMergeLambda), new NotificationKeyFilter
+            {
+                Suffix = ".json"
+            });
+
             var imageQueue = new Queue(this, "image-processing-queue", new QueueProps
             {
                 VisibilityTimeout = Duration.Minutes(10)

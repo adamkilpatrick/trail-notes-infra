@@ -42,7 +42,7 @@ def lambda_handler(event, context):
     payload = create_payload(dead_man_bucket, dead_man_key, days_threshold, aware_check_in_date)
     s3.put_object(
         Bucket=web_site_bucket,
-        Key='/status/deadMan.json',
+        Key='status/deadMan.json',
         Body=json.dumps(payload),
         ContentType='application/json'
     )
