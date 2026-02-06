@@ -172,8 +172,8 @@ namespace TrailNotesInfra
                 {
                     { "TARGET_URL", "https://live.garmin.com/adamkilpatrick" },
                     { "S3_BUCKET", websiteBucket.BucketName },
-                    { "PATH_NAME", "lsht_garmin" },
-                    { "ROOT", "lsht"}
+                    { "PATH_NAME", "at_garmin" },
+                    { "ROOT", "at"}
                 }
             });
             websiteBucket.GrantWrite(trackpointScraper);
@@ -188,25 +188,34 @@ namespace TrailNotesInfra
             });
             scraperRule.AddTarget(new LambdaFunction(trackpointScraper));
 
+
             var pathMergeLambda = new Amazon.CDK.AWS.Lambda.Function(this, "path-merger-lambda", new Amazon.CDK.AWS.Lambda.FunctionProps
             {
                 Runtime = Runtime.PYTHON_3_12,
                 Handler = "pathMerger.lambda_handler",
                 Code = Code.FromAsset("src/TrailNotesInfra/scripts"),
+                ReservedConcurrentExecutions = 1,
                 Environment = new Dictionary<string, string>
                 {
-                    { "PATHS", "lsht,lsht_garmin" },
-                    { "OUTPUT_KEY", "lsht_merged.json" },
+                    { "PATHS", "at,at_garmin" },
+                    { "OUTPUT_KEY", "at_merged.json" },
+                    { "BUCKET", websiteBucket.BucketName },
                     { "CLOUDFRONT_DISTRIBUTION_ID", distribution.DistributionId }
                 },
                 Timeout = Duration.Minutes(5)
             });
             websiteBucket.GrantReadWrite(pathMergeLambda);
             distribution.GrantCreateInvalidation(pathMergeLambda);
-            websiteBucket.AddEventNotification(EventType.OBJECT_CREATED, new LambdaDestination(pathMergeLambda), new NotificationKeyFilter
+
+            var mergerRule = new Rule(this, "merger-rule", new RuleProps
             {
-                Suffix = ".json"
+                Schedule = Schedule.Cron(new CronOptions
+                {
+                    Hour = "5",
+                    Minute = "0"
+                })
             });
+            mergerRule.AddTarget(new LambdaFunction(pathMergeLambda));
 
             var imageQueue = new Queue(this, "image-processing-queue", new QueueProps
             {

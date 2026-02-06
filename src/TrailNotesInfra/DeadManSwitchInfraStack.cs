@@ -4,6 +4,8 @@ using Amazon.CDK;
 using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.CloudFront;
 using Amazon.CDK.AWS.CloudFront.Origins;
+using Amazon.CDK.AWS.Events;
+using Amazon.CDK.AWS.Events.Targets;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Lambda;
 using Amazon.CDK.AWS.S3;
@@ -40,6 +42,15 @@ namespace TrailNotesInfra
             bucket.GrantReadWrite(this.DeadManLambda);
             props.WebsiteBucket.GrantReadWrite(this.DeadManLambda);
             props.WebsiteDistribution.GrantCreateInvalidation(this.DeadManLambda);
+            var dailyRule = new Rule(this, "daily-dead-check", new RuleProps
+            {
+                Schedule = Schedule.Cron(new CronOptions
+                {
+                    Hour = "4",
+                    Minute = "0"
+                })
+            });
+            dailyRule.AddTarget(new LambdaFunction(this.DeadManLambda));
         }
     }
 }

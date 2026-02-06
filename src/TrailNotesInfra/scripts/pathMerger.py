@@ -1,4 +1,5 @@
 import json
+import time
 import boto3
 import os
 
@@ -9,7 +10,7 @@ def lambda_handler(event, context):
     paths = os.environ['PATHS'].split(',')
     output_key = os.environ['OUTPUT_KEY']
     cf_distribution_id = os.environ['CLOUDFRONT_DISTRIBUTION_ID']
-    bucket = event['Records'][0]['s3']['bucket']['name']
+    bucket = os.environ['BUCKET']
     
     merged_path = []
     root = ''
@@ -24,7 +25,7 @@ def lambda_handler(event, context):
     
     s3.put_object(
         Bucket=bucket,
-        Key=output_key,
+        Key='paths/' + output_key,
         Body=json.dumps({'root': root, 'path': merged_path}),
         ContentType='application/json'
     )
@@ -33,7 +34,7 @@ def lambda_handler(event, context):
         InvalidationBatch={
             'Paths': {
                 'Quantity': 1,
-                'Items': ['/status/*']
+                'Items': ['/*']
             },
             'CallerReference': str(time.time()) 
         }

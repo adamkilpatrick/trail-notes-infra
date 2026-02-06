@@ -15,6 +15,9 @@ do ()
 type LocationData = {
     Latitude: float
     Longitude: float
+    Width: int
+    Height: int
+    Description: string
 }
 
 type ImageLocations = Map<string, LocationData>
@@ -30,6 +33,7 @@ type S3Event = {
     Records: S3EventRecord[]
 }
 and S3EventRecord = {
+    EventName: string option
     S3: S3Data
 }
 and S3Data = {
@@ -44,20 +48,43 @@ and S3Object = {
 }
 
 module ExifExtractor =
-    let extractGpsCoordinates (stream: Stream) =
+    let extractImageData (stream: Stream) =
         let directories = ImageMetadataReader.ReadMetadata(stream)
         let gpsDirectory = directories |> Seq.tryFind (fun d -> d :? GpsDirectory) |> Option.map (fun d -> d :?> GpsDirectory)
+        let exifDirectory = directories |> Seq.tryFind (fun d -> d :? Formats.Jpeg.JpegDirectory) |> Option.map (fun d -> d :?> Formats.Jpeg.JpegDirectory)
+        let iptcDirectory = directories |> Seq.tryFind (fun d -> d :? Formats.Iptc.IptcDirectory) |> Option.map (fun d -> d :?> Formats.Iptc.IptcDirectory)
+
+
+        let gpsData = 
+            match gpsDirectory with
+            | Some gps when gps.HasTagName(GpsDirectory.TagLatitude) && gps.HasTagName(GpsDirectory.TagLongitude) ->
+                let lat = gps.GetGeoLocation().Latitude
+                let lng = gps.GetGeoLocation().Longitude
+                Some (lat, lng)
+            | _ -> None
+
+        let dimensions =
+            match exifDirectory with
+            | Some exif when exif.HasTagName(Formats.Jpeg.JpegDirectory.TagImageWidth) && exif.HasTagName(Formats.Jpeg.JpegDirectory.TagImageHeight) ->
+                let width = exif.GetInt32(Formats.Jpeg.JpegDirectory.TagImageWidth)
+                let height = exif.GetInt32(Formats.Jpeg.JpegDirectory.TagImageHeight)
+                Some (width, height)
+            | _ -> None
+
+        let description =
+            match iptcDirectory with
+            | Some iptc when iptc.HasTagName(Formats.Iptc.IptcDirectory.TagCaption) ->
+                (iptc.GetString(Formats.Iptc.IptcDirectory.TagCaption))
+            | _ -> ""
         
-        match gpsDirectory with
-        | Some gps when gps.HasTagName(GpsDirectory.TagLatitude) && gps.HasTagName(GpsDirectory.TagLongitude) ->
-            let lat = gps.GetGeoLocation().Latitude
-            let lng = gps.GetGeoLocation().Longitude
-            Some { Latitude = lat; Longitude = lng }
+        match gpsData, dimensions with
+        | Some (lat, lng), Some (width, height) ->
+            Some { Latitude = lat; Longitude = lng; Width = width; Height = height; Description = description }
         | _ -> None
     
     let extractFromFile (filePath: string) =
         use stream = File.OpenRead(filePath)
-        extractGpsCoordinates stream
+        extractImageData stream
 
 module S3Helper =
     let private s3Client = new AmazonS3Client()
@@ -104,28 +131,33 @@ type Function() =
                 let options = new JsonSerializerOptions(PropertyNameCaseInsensitive = true)
                 let s3Event = JsonSerializer.Deserialize<S3Event>(record.Body, options)
                 context.Logger.LogInformation($"SQSRECORD {s3Event}")
+                let records = match s3Event.Records with | n when n = null -> [||] | _ -> s3Event.Records
                 
-                for s3Record in s3Event.Records do
-                    context.Logger.LogInformation(JsonSerializer.Serialize(s3Record))
-                    context.Logger.LogInformation($"S3RECORD {s3Record}")
-                    let bucketName = s3Record.S3.Bucket.Name
-                    let objectKey = s3Record.S3.Object.Key
-                    
-                    context.Logger.LogInformation($"Processing {objectKey} from {bucketName}")
-                    
-                    try
-                        use! imageStream = S3Helper.downloadImage bucketName objectKey
+                for s3Record in records do
+                    match s3Record.EventName with
+                    | Some eventName when eventName.Contains("s3:TestEvent") ->
+                        context.Logger.LogInformation("Skipping S3 test event")
+                    | _ ->
+                        context.Logger.LogInformation(JsonSerializer.Serialize(s3Record))
+                        context.Logger.LogInformation($"S3RECORD {s3Record}")
+                        let bucketName = s3Record.S3.Bucket.Name
+                        let objectKey = s3Record.S3.Object.Key
                         
-                        match ExifExtractor.extractGpsCoordinates imageStream with
-                        | Some location ->
-                            let! currentData = S3Helper.downloadJson jsonBucket jsonKey
-                            let updatedData = currentData |> Map.add objectKey location
-                            do! S3Helper.uploadJson jsonBucket jsonKey updatedData
-                            context.Logger.LogInformation($"Updated location for {objectKey}: {location.Latitude}, {location.Longitude}")
-                        | None ->
-                            context.Logger.LogInformation($"No GPS data found in {objectKey}")
-                    with
-                    | ex -> context.Logger.LogError($"Error processing {objectKey}: {ex.Message}")
+                        context.Logger.LogInformation($"Processing {objectKey} from {bucketName}")
+                        
+                        try
+                            use! imageStream = S3Helper.downloadImage bucketName objectKey
+                            
+                            match ExifExtractor.extractImageData imageStream with
+                            | Some location ->
+                                let! currentData = S3Helper.downloadJson jsonBucket jsonKey
+                                let updatedData = currentData |> Map.add objectKey location
+                                do! S3Helper.uploadJson jsonBucket jsonKey updatedData
+                                context.Logger.LogInformation($"Updated data for {objectKey}: {location.Latitude}, {location.Longitude}, {location.Width}x{location.Height}")
+                            | None ->
+                                context.Logger.LogInformation($"No GPS data found in {objectKey}")
+                        with
+                        | ex -> context.Logger.LogError($"Error processing {objectKey}: {ex.Message}")
         } |> Async.RunSynchronously
 
 module Program =
@@ -135,9 +167,9 @@ module Program =
         | [| filePath |] when File.Exists(filePath) ->
             match ExifExtractor.extractFromFile filePath with
             | Some location ->
-                printfn $"GPS found in {Path.GetFileName(filePath)}: {location.Latitude}, {location.Longitude}"
+                printfn $"Data found in {Path.GetFileName(filePath)}: {location.Latitude}, {location.Longitude}, {location.Width}x{location.Height}"
             | None ->
-                printfn $"No GPS data found in {Path.GetFileName(filePath)}"
+                printfn $"No complete data found in {Path.GetFileName(filePath)}"
             0
         | _ ->
             printfn "Usage: dotnet run <image-file-path>"

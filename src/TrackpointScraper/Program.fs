@@ -8,9 +8,10 @@ open Microsoft.Playwright
 open System.Text.Json
 open System.IO
 open Amazon.Lambda.Core
+open Amazon.Lambda.RuntimeSupport
+open Amazon.Lambda.Serialization.SystemTextJson
 
-
-[<assembly: LambdaSerializer(typeof<Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer>)>]
+[<assembly: LambdaSerializer(typeof<DefaultLambdaJsonSerializer>)>]
 do ()
 module TrackpointScraper = 
     type AjaxResponse = {
@@ -42,29 +43,16 @@ module TrackpointScraper =
         Path: LocationPoint[]
     }
 
-    let interceptAjaxCall (targetUrlPattern: string) (page: IPage) =
-        let mutable interceptedResponse: AjaxResponse option = None
-        
-        page.Response.Subscribe(fun response ->
-            if response.Url.Contains(targetUrlPattern) then
-                let responseBody = response.TextAsync().Result
-                interceptedResponse <- Some {
-                    Url = response.Url
-                    Method = response.Request.Method
-                    Status = response.Status
-                    ResponseBody = responseBody
-                }
-                printfn "Intercepted AJAX call: %s" response.Url
-        ) |> ignore
-        
-        interceptedResponse
-
     let runScraper (targetUrl: string) (ajaxPattern: string) = task {
         use! playwright = Playwright.CreateAsync()
         let options = BrowserTypeLaunchOptions()
         options.Headless <- true
+        options.Timeout <- 90000f
+        options.ChromiumSandbox <- false
+        options.Args <- [|"--disable-gpu"; "--single-process"|]
         let! browser = playwright.Chromium.LaunchAsync(options)
-        let! page = browser.NewPageAsync()
+        let! context = browser.NewContextAsync()
+        let! page = context.NewPageAsync()
         
         // Set up response interception
         let capturedResponses = ResizeArray<AjaxResponse>()
@@ -145,10 +133,7 @@ module TrackpointScraper =
         |> Array.map (fun (_, n) -> Array.head n)
         |> Array.sortBy (fun n -> n.Label)
 
-open TrackpointScraper
-
-type Function() =
-    member this.FunctionHandler(input: obj, context: ILambdaContext) =
+    let functionHandler (input: obj) (context: ILambdaContext) : Task<string> = task {
         let s3Client = new AmazonS3Client()
         let targetUrl = Environment.GetEnvironmentVariable("TARGET_URL")
         let bucketName = Environment.GetEnvironmentVariable("S3_BUCKET")
@@ -156,34 +141,29 @@ type Function() =
         let root = Environment.GetEnvironmentVariable("ROOT")
 
         try
-            let updatedGarminPoints = getGarminPath targetUrl |> Async.AwaitTask |> Async.RunSynchronously
-            let existingGarminPath = downloadPath s3Client bucketName pathName |> Async.RunSynchronously
-            
+            let! updatedGarminPoints = getGarminPath targetUrl
+            context.Logger.LogInformation("Scraped points from Garmin")
+            let! existingGarminPath = downloadPath s3Client bucketName pathName |> Async.StartAsTask
+            context.Logger.LogInformation("Loaded existing Garmin path")
+
             let combinedPaths = mergePaths updatedGarminPoints existingGarminPath
             let outputPath = {Root=root; Path=combinedPaths}
-            uploadPath s3Client bucketName pathName outputPath |> Async.RunSynchronously
+            context.Logger.LogInformation("Merged existing Garmin path")
+            do! uploadPath s3Client bucketName pathName outputPath |> Async.StartAsTask
             
             context.Logger.LogInformation($"Successfully processed {combinedPaths.Length} points")
-            "Success"
+            return "Success"
         with
         | ex -> 
             context.Logger.LogError($"Error: {ex.Message}")
-            reraise()
+            raise ex
+            return "Error"
+    }
 
 module Program =
     [<EntryPoint>]
-    let main args =
-        let s3Client = new AmazonS3Client()
-        let targetUrl = "https://live.garmin.com/adamkilpatrick"
-        let bucketName = ""
-        let pathName = "lsht_garmin"
-
-        let updatedGarminPoints = getGarminPath targetUrl |> Async.AwaitTask |> Async.RunSynchronously
-        let existingGarminPath = downloadPath s3Client bucketName pathName |> Async.RunSynchronously
-        
-        
-        let combinedPaths = mergePaths updatedGarminPoints existingGarminPath
-        let outputPath = {Root="Test"; Path=combinedPaths}
-        uploadPath s3Client bucketName pathName outputPath |> Async.RunSynchronously
-        printfn "%A" outputPath
+    let main _args =
+        let handler = Func<obj, ILambdaContext, Task<string>>(TrackpointScraper.functionHandler)
+        use bootstrap = LambdaBootstrapBuilder.Create<obj, string>(handler, new DefaultLambdaJsonSerializer()).Build()
+        bootstrap.RunAsync().GetAwaiter().GetResult()
         0
