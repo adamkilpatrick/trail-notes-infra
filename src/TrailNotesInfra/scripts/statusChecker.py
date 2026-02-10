@@ -24,17 +24,30 @@ def get_weather(lat, long):
             'lowTemp': data['daily']['temperature_2m_min']
         }
 
+def get_manual_status(url):
+    with urllib.request.urlopen(url) as url:
+        data = json.loads(url.read().decode())
+        return data
+
 def lambda_handler(event, context):
     cf_client = boto3.client('cloudfront')
     s3 = boto3.client('s3')
     # TODO cram these into env variables
     date = get_last_check_in_date('https://api.github.com/repos/adamkilpatrick/trail-notes/commits')
-    loc = get_last_check_in_loc('https://trail.snakeha.us/paths/test.json')
+    loc = get_last_check_in_loc('https://trail.snakeha.us/paths/at_merged.json')
+    manualStatus = get_manual_status('https://trail.snakeha.us/status/manualStatus.json')
     weather = get_weather(loc[0], loc[1])
+    currentMile = float(manualStatus['currentMile'])
+    targetMile = float(manualStatus['targetMile'])
+    startDate = datetime.strptime(manualStatus['startDate'], "%Y-%m-%d")
+    daysSinceStart = (datetime.utcnow() - startDate).days
     payload = {
         'date': date,
         'loc': loc,
         'weather': weather,
+        'currentMile': currentMile,
+        'milesPerDay': currentMile / float(daysSinceStart),
+        'percentComplete': currentMile / targetMile * 100.0,
         'timestamp': datetime.utcnow().isoformat()
     }
     

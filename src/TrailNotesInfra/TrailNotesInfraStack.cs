@@ -168,6 +168,7 @@ namespace TrailNotesInfra
                 Code = DockerImageCode.FromImageAsset("src/TrackpointScraper"),
                 Timeout = Duration.Minutes(5),
                 ReservedConcurrentExecutions = 1,
+                MemorySize = 1024,
                 Environment = new Dictionary<string, string>
                 {
                     { "TARGET_URL", "https://live.garmin.com/adamkilpatrick" },
