@@ -52,7 +52,7 @@ module ExifExtractor =
         let directories = ImageMetadataReader.ReadMetadata(stream)
         let gpsDirectory = directories |> Seq.tryFind (fun d -> d :? GpsDirectory) |> Option.map (fun d -> d :?> GpsDirectory)
         let exifDirectory = directories |> Seq.tryFind (fun d -> d :? Formats.Jpeg.JpegDirectory) |> Option.map (fun d -> d :?> Formats.Jpeg.JpegDirectory)
-        let iptcDirectory = directories |> Seq.tryFind (fun d -> d :? Formats.Iptc.IptcDirectory) |> Option.map (fun d -> d :?> Formats.Iptc.IptcDirectory)
+        let ifd0Directory = directories |> Seq.tryFind (fun d -> d :? ExifIfd0Directory) |> Option.map (fun d -> d :?> ExifIfd0Directory)
 
 
         let gpsData = 
@@ -72,9 +72,9 @@ module ExifExtractor =
             | _ -> None
 
         let description =
-            match iptcDirectory with
-            | Some iptc when iptc.HasTagName(Formats.Iptc.IptcDirectory.TagCaption) ->
-                (iptc.GetString(Formats.Iptc.IptcDirectory.TagCaption))
+            match ifd0Directory with
+            | Some ifd0 when ifd0.HasTagName(Formats.Exif.ExifIfd0Directory.TagImageDescription) ->
+                (ifd0.GetString(Formats.Exif.ExifIfd0Directory.TagImageDescription))
             | _ -> ""
         
         match gpsData, dimensions with
@@ -167,7 +167,7 @@ module Program =
         | [| filePath |] when File.Exists(filePath) ->
             match ExifExtractor.extractFromFile filePath with
             | Some location ->
-                printfn $"Data found in {Path.GetFileName(filePath)}: {location.Latitude}, {location.Longitude}, {location.Width}x{location.Height}"
+                printfn $"Data found in {Path.GetFileName(filePath)}: {location.Latitude}, {location.Longitude}, {location.Width}x{location.Height}, {location.Description}"
             | None ->
                 printfn $"No complete data found in {Path.GetFileName(filePath)}"
             0
