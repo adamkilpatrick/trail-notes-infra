@@ -156,7 +156,7 @@ namespace TrailNotesInfra
             {
                 Schedule = Schedule.Cron(new CronOptions
                 {
-                    Hour = "4",
+                    Hour = "*/4",
                     Minute = "0"
                 })
             });
@@ -183,7 +183,7 @@ namespace TrailNotesInfra
             {
                 Schedule = Schedule.Cron(new CronOptions
                 {
-                    Hour = "4",
+                    Hour = "*/4",
                     Minute = "0"
                 })
             });
@@ -212,7 +212,7 @@ namespace TrailNotesInfra
             {
                 Schedule = Schedule.Cron(new CronOptions
                 {
-                    Hour = "5",
+                    Hour = "*/5",
                     Minute = "0"
                 })
             });
