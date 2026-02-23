@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-  runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
@@ -19,7 +19,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole # Replace with your IAM Role ARN
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: us-east-1
 
       - name: Setup Node.js # Or set up Python, Java, etc.
@@ -32,4 +32,11 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Install AWS CDK ToolKs-cdk
+      - name: Install AWS CDK Tools
+        run: npm install -g aws-cdk
+
+      - name: cdk synth
+        run: cdk synth
+
+      - name: cdk deploy
+        run: cdk deploy --all --require-approval never
