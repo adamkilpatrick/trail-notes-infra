@@ -74,6 +74,7 @@ module TrackpointScraper =
         
         // Navigate to target page
         let! _ = page.GotoAsync(targetUrl)
+        do! Task.Delay(1500)
         
         // Wait for AJAX calls to complete (adjust timeout as needed)
         let mutable attempts = 0
