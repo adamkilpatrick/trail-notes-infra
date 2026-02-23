@@ -28,8 +28,8 @@ jobs:
           node-version: '25'
 
       - name: Setup .NET
-        with: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v4
+        with:
           dotnet-version: '8.0.x'
 
-      - name: Install AWS CDK Toolkit
-        run: as-cdks-cdkpm install -g aws-cdk
+      - name: Install AWS CDK ToolKs-cdk
