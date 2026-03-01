@@ -75,6 +75,8 @@ module TrackpointScraper =
         // Navigate to target page
         let! _ = page.GotoAsync(targetUrl)
         do! Task.Delay(1500)
+        let! _ = page.GotoAsync(targetUrl)
+        do! Task.Delay(1500) // garmin does some weird redirect sometimes, this is a hack
         
         // Wait for AJAX calls to complete (adjust timeout as needed)
         let mutable attempts = 0
@@ -90,15 +92,12 @@ module TrackpointScraper =
     }
 
     let downloadPath (s3Client: AmazonS3Client) (bucketName: string) (pathName: string) =
-        async {
-            try
-                let request = GetObjectRequest(BucketName = bucketName, Key = $"paths/{pathName}.json")
-                let! response = s3Client.GetObjectAsync(request) |> Async.AwaitTask
-                use reader = new StreamReader(response.ResponseStream)
-                let! content = reader.ReadToEndAsync() |> Async.AwaitTask
-                return JsonSerializer.Deserialize<LocationPath>(content).Path
-            with
-            | _ -> return [||]
+        async {         
+            let request = GetObjectRequest(BucketName = bucketName, Key = $"paths/{pathName}.json")
+            let! response = s3Client.GetObjectAsync(request) |> Async.AwaitTask
+            use reader = new StreamReader(response.ResponseStream)
+            let! content = reader.ReadToEndAsync() |> Async.AwaitTask
+            return JsonSerializer.Deserialize<LocationPath>(content).Path
         }
 
     let uploadPath (s3Client: AmazonS3Client) bucketName (pathName: string) (data: LocationPath) =
