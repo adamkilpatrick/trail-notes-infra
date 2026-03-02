@@ -149,7 +149,7 @@ namespace TrailNotesInfra
                 Timeout = Duration.Minutes(5)
             });
 
-            websiteBucket.GrantWrite(statusLambda);
+            websiteBucket.GrantReadWrite(statusLambda);
             distribution.GrantCreateInvalidation(statusLambda);
 
             var dailyRule = new Rule(this, "daily-status-check", new RuleProps
@@ -177,7 +177,7 @@ namespace TrailNotesInfra
                     { "ROOT", "at"}
                 }
             });
-            websiteBucket.GrantWrite(trackpointScraper);
+            websiteBucket.GrantReadWrite(trackpointScraper);
 
             var scraperRule = new Rule(this, "scraper-rule", new RuleProps
             {
