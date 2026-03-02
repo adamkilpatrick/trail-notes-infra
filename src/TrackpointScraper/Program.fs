@@ -92,12 +92,13 @@ module TrackpointScraper =
     }
 
     let downloadPath (s3Client: AmazonS3Client) (bucketName: string) (pathName: string) =
-        async {         
+        async {
+            let options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
             let request = GetObjectRequest(BucketName = bucketName, Key = $"paths/{pathName}.json")
             let! response = s3Client.GetObjectAsync(request) |> Async.AwaitTask
             use reader = new StreamReader(response.ResponseStream)
             let! content = reader.ReadToEndAsync() |> Async.AwaitTask
-            return JsonSerializer.Deserialize<LocationPath>(content).Path
+            return JsonSerializer.Deserialize<LocationPath>(content, options).Path
         }
 
     let uploadPath (s3Client: AmazonS3Client) bucketName (pathName: string) (data: LocationPath) =
