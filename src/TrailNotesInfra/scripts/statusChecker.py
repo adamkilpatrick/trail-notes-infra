@@ -40,7 +40,7 @@ def lambda_handler(event, context):
     currentMile = float(manualStatus['currentMile'])
     targetMile = float(manualStatus['targetMile'])
     startDate = datetime.strptime(manualStatus['startDate'], "%Y-%m-%d")
-    daysSinceStart = (datetime.utcnow() - startDate).days
+    daysSinceStart = 160
     payload = {
         'date': date,
         'loc': loc,
