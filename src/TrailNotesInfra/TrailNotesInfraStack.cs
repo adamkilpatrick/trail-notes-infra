@@ -161,7 +161,7 @@ namespace TrailNotesInfra
                 })
             });
 
-            dailyRule.AddTarget(new LambdaFunction(statusLambda));
+            //dailyRule.AddTarget(new LambdaFunction(statusLambda));
 
             var trackpointScraper = new DockerImageFunction(this, "trackpoint-scraper-lambda", new DockerImageFunctionProps
             {
@@ -187,7 +187,7 @@ namespace TrailNotesInfra
                     Minute = "0"
                 })
             });
-            scraperRule.AddTarget(new LambdaFunction(trackpointScraper));
+            //scraperRule.AddTarget(new LambdaFunction(trackpointScraper));
 
 
             var pathMergeLambda = new Amazon.CDK.AWS.Lambda.Function(this, "path-merger-lambda", new Amazon.CDK.AWS.Lambda.FunctionProps
@@ -216,7 +216,7 @@ namespace TrailNotesInfra
                     Minute = "0"
                 })
             });
-            mergerRule.AddTarget(new LambdaFunction(pathMergeLambda));
+            //mergerRule.AddTarget(new LambdaFunction(pathMergeLambda));
 
             var imageQueue = new Queue(this, "image-processing-queue", new QueueProps
             {

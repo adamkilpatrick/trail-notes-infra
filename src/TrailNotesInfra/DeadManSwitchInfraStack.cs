@@ -50,7 +50,7 @@ namespace TrailNotesInfra
                     Minute = "0"
                 })
             });
-            dailyRule.AddTarget(new LambdaFunction(this.DeadManLambda));
+            //dailyRule.AddTarget(new LambdaFunction(this.DeadManLambda));
         }
     }
 }
